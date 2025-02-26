@@ -17,7 +17,8 @@ export async function generateEmoji(env: Env, prompt: string, image?: string, mo
         num_inference_steps: 20,
         output_quality: 100,
         upscale: true,
-        upscale_steps: 10
+        upscale_steps: 10,
+        seed: Math.floor(Math.random() * 1000000),
       }
     };
 
@@ -53,7 +54,8 @@ export async function generateEmoji(env: Env, prompt: string, image?: string, mo
         high_noise_frac: 0.8,
         prompt_strength: 0.8,
         negative_prompt: "bubbles",
-        num_inference_steps: 40
+        num_inference_steps: 40,
+        seed: Math.floor(Math.random() * 1000000),
       }
     };
   }

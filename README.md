@@ -94,6 +94,7 @@ CREATE TABLE emojis (
   ip TEXT,
   locale TEXT DEFAULT 'en',
   has_reference_image BOOLEAN DEFAULT false,
+  model TEXT,
   UNIQUE(slug)
 );
 create index idx_base_slug on emojis (base_slug);
@@ -128,7 +129,8 @@ CREATE TABLE emoji_details (
   primary_color TEXT,
   keywords JSON NOT NULL DEFAULT '[]',
   quality_score FLOAT,
-  UNIQUE(slug, locale)
+  subject_count INTEGER,
+  UNIQUE(slug)
 );
 
 -- Emoji statistics (updated asynchronously)

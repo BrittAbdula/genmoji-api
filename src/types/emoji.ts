@@ -11,6 +11,11 @@ export interface Emoji {
   locale: string;
   has_reference_image: boolean;
   model: string;
+  category?: EmojiCategory;
+  primary_color?: string;
+  quality_score?: number;
+  subject_count?: number;
+  keywords?: string[];
 }
 
 export interface EmojiDetails {

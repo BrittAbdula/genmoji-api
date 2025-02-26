@@ -8,6 +8,7 @@ import {
   ActionType
 } from '../types/emoji';
 import { translateToMultipleLanguages } from '../utils/language';
+import { ImageAnalysisResult } from '../utils/imageAnalysis';
 
 const SELECT_FIELDS = 'prompt, slug, image_url, created_at, is_public, likes_count, dislikes_count, downloads_count, copies_count, discord_adds_count, locale';
 
@@ -57,9 +58,15 @@ export async function getEmojiBySlug(env: Env, slug: string, locale: string): Pr
     e.ip, 
     e.has_reference_image,
     COALESCE(et.translated_prompt, e.original_prompt) as prompt,
-    e.model
+    e.model,
+    ed.category,
+    ed.primary_color,
+    ed.quality_score,
+    ed.subject_count,
+    ed.keywords
   FROM emojis e
   LEFT JOIN emoji_translations et ON e.base_slug = et.base_slug AND et.locale = ?
+  LEFT JOIN emoji_details ed ON e.slug = ed.slug 
   WHERE e.slug = ?
 `)
   .bind(locale, slug)
@@ -78,7 +85,7 @@ export async function getEmojisByBaseSlug(
   const result = await env.DB
     .prepare(`
       SELECT * FROM emojis e 
-      WHERE base_slug = ? 
+      WHERE base_slug = ? AND has_reference_image = 0
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
     `)
@@ -114,10 +121,10 @@ export async function listEmojis(
 
   if (sort === 'popular') {
     query += ' LEFT JOIN emoji_stats s ON e.slug = s.slug';
-    query += ' WHERE e.is_public = 1';
+    query += ' WHERE e.is_public = 1 AND e.has_reference_image = 0';
     query += ' ORDER BY s.average_rating DESC, s.vote_count DESC, e.created_at DESC';
   } else {
-    query += ' WHERE e.is_public = 1 ';
+    query += ' WHERE e.is_public = 1 AND e.has_reference_image = 0';
     query += ' ORDER BY e.created_at DESC';
   }
   query += ' LIMIT ? OFFSET ?';
@@ -745,4 +752,112 @@ export async function translateAndStoreMultiLang(
     console.error(`Batch translation failed for slug ${baseSlug}:`, error);
     throw error;
   }
+}
+
+export interface EmojiRecord {
+  id: number;
+  slug: string;
+  image_url: string;
+}
+
+export interface AnalysisRecord {
+  slug: string;
+  locale: string;
+  category: string;
+  primary_color: string;
+  quality_score: number;
+  keywords: string[];
+}
+
+/**
+ * Get unanalyzed emojis from the database
+ */
+export async function getUnanalyzedEmojis(env: Env, batchSize: number, lastProcessedId = 0): Promise<EmojiRecord[]> {
+  const query = `
+    SELECT id, slug, image_url 
+    FROM emojis 
+    WHERE id > $1 
+    AND slug NOT IN (
+      SELECT slug 
+      FROM emoji_details
+    )
+    ORDER BY id 
+    LIMIT $2
+  `;
+  
+  const result = await env.DB.prepare(query)
+    .bind(lastProcessedId, batchSize)
+    .all();
+    
+  // Validate and transform the results
+  const records = (result?.results || []) as Record<string, unknown>[];
+  return records.map(record => ({
+    id: Number(record.id),
+    slug: String(record.slug),
+    image_url: String(record.image_url)
+  }));
+}
+
+/**
+ * Save analysis result to the database
+ */
+export async function saveAnalysisResult(
+  env: Env, 
+  slug: string, 
+  locale: string, 
+  analysis: ImageAnalysisResult
+): Promise<void> {
+  const query = `
+    INSERT INTO emoji_details (
+      slug,
+      locale,
+      category,
+      primary_color,
+      quality_score,
+      subject_count,
+      keywords
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT(slug) DO UPDATE SET
+      category = excluded.category,
+      primary_color = excluded.primary_color,
+      quality_score = excluded.quality_score,
+      subject_count = excluded.subject_count,
+      keywords = excluded.keywords
+  `;
+  
+  await env.DB.prepare(query).bind(
+    slug,
+    locale,
+    analysis.category,
+    analysis.primaryColor,
+    analysis.qualityScore,
+    analysis.subjectCount,
+    JSON.stringify(analysis.keywords)
+  ).run();
+}
+
+/**
+ * Get analysis progress statistics
+ */
+export async function getAnalysisProgress(env: Env): Promise<{
+  total: number;
+  analyzed: number;
+  remaining: number;
+}> {
+  const totalQuery = `SELECT COUNT(*) as total FROM emojis`;
+  const analyzedQuery = `SELECT COUNT(DISTINCT slug) as analyzed FROM emoji_details`;
+  
+  const [totalResult, analyzedResult] = await Promise.all([
+    env.DB.prepare(totalQuery).first(),
+    env.DB.prepare(analyzedQuery).first()
+  ]);
+  
+  const total = Number(totalResult?.total || 0);
+  const analyzed = Number(analyzedResult?.analyzed || 0);
+  
+  return {
+    total,
+    analyzed,
+    remaining: total - analyzed
+  };
 }

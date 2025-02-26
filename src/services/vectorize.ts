@@ -55,7 +55,7 @@ export async function searchEmojisByVector(
     const effectiveLimit = Math.min(limit + offset + (excludeId ? 1 : 0), maxTopK);
     
     const results = await env.VECTORIZE.query(queryVector[0], {
-      topK: effectiveLimit
+      topK: maxTopK
     });
     
     if (results.matches.length === 0) {
@@ -87,7 +87,8 @@ export async function searchEmojisByVector(
           e.model
         FROM emojis e
         LEFT JOIN emoji_translations et ON e.base_slug = et.base_slug AND et.locale = ? 
-        WHERE e.id IN (${placeholders}) AND e.is_public = 1`)
+        WHERE e.id IN (${placeholders}) AND e.is_public = 1 AND e.has_reference_image = 0
+        limit ${limit} offset ${offset}`)
       .bind(locale, ...matchedIds)
       .all<Emoji>();
 

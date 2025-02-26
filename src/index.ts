@@ -4,6 +4,7 @@ import { Env } from './types/env'
 import emojiRoutes from './routes/emoji'
 import actionRoutes from './routes/action'
 import translationRoutes from './routes/translation'
+import analysisRoutes from './routes/analysis'
 const app = new Hono<{ Bindings: Env }>()
 
 // CORS middleware
@@ -20,5 +21,5 @@ app.use('*', cors({
 app.route('/genmoji', emojiRoutes)
 app.route('/action', actionRoutes)
 app.route('/translation', translationRoutes)
-
+app.route('/analysis', analysisRoutes)
 export default app
