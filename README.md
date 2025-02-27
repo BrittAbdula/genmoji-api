@@ -123,7 +123,8 @@ CREATE TABLE emoji_details (
       'activities',
       'objects',
       'symbols',
-      'flags'
+      'flags',
+      'other'
     )
   ),
   primary_color TEXT,

@@ -13,7 +13,8 @@ const EmojiCategoryEnum = z.enum([
   'activities',
   'objects',
   'symbols',
-  'flags'
+  'flags',
+  'other'
 ]).describe('Category of the emoji');
 
 // Schema for image analysis result
