@@ -125,7 +125,7 @@ export async function removeBackground(env: Env, imageUrl: string): Promise<stri
   return removeBgData.urls.get;
 }
 
-export async function pollPrediction(url: string, env: Env, maxAttempts: number = 30, initialDelay: number = 6000): Promise<string> {
+export async function pollPrediction(url: string, env: Env, maxAttempts: number = 30, initialDelay: number = 6000, model: string = 'emoji'): Promise<string> {
   let attempts = 0;
   
   while (attempts < maxAttempts) {
@@ -138,6 +138,10 @@ export async function pollPrediction(url: string, env: Env, maxAttempts: number 
     const result = await response.json() as ReplicateResponse | RemoveBgResponse;
     
     if (result.status === 'succeeded' && result.output) {
+      // if (model === 'sticker') {
+      //   console.log('sticker--->', result.output);
+      //   return Array.isArray(result.output) ? result.output[-1] : result.output;
+      // }
       return Array.isArray(result.output) ? result.output[0] : result.output;
     }
 

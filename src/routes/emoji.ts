@@ -36,7 +36,7 @@ app.get('/by-base-slug/:baseSlug', async (c) => {
     return c.json({ success: true, emojis: [] });
   }
 
-  return c.json({ success: true, emojis});
+  return c.json({ success: true, emojis });
 });
 
 // Get related emojis
@@ -47,9 +47,9 @@ app.get('/related/:slug', async (c) => {
   // console.log('---> get /emoji/related:', slug, locale);
 
   const emoji = await c.env.DB
-  .prepare('SELECT * FROM emojis WHERE slug = ?')
-  .bind(slug)
-  .first<Emoji>();
+    .prepare('SELECT * FROM emojis WHERE slug = ?')
+    .bind(slug)
+    .first<Emoji>();
 
   if (!emoji) {
     return c.json({ success: false, error: 'Emoji not found' }, 404);
@@ -108,7 +108,7 @@ app.post('/generate', async (c) => {
       return c.json({ success: false, error: 'Prompt is required' }, 400);
     }
 
-    if ( prompt.length > 280 ) {
+    if (prompt.length > 280) {
       return c.json({ success: false, error: 'Prompt is too long' }, 400);
     }
 
@@ -133,15 +133,16 @@ app.post('/generate', async (c) => {
 
     // Generate emoji
     const predictionUrl = await ai.generateEmoji(c.env, translatedPrompt, image, model);
-    const imageUrl = await ai.pollPrediction(predictionUrl, c.env);
-    
-    // Remove background
-    const removeBgUrl = await ai.removeBackground(c.env, imageUrl);
-    const processedImageUrl = await ai.pollPrediction(removeBgUrl, c.env, 15);
-    
+    const imageUrl = await ai.pollPrediction(predictionUrl, c.env, 30, 6000, model);
+    let processedImageUrl = imageUrl;
+    if (model !== 'sticker') {
+      // Remove background
+      const removeBgUrl = await ai.removeBackground(c.env, imageUrl);
+      processedImageUrl = await ai.pollPrediction(removeBgUrl, c.env, 15);
+    }
+
     // Upload to Cloudflare Images
     const finalImageUrl = await cloudflare.uploadToCloudflareImages(c.env, processedImageUrl);
-
     // Store in database
     const userIp = c.req.header('cf-connecting-ip') || 'unknown';
     const emojiData: Omit<Emoji, 'id' | 'created_at'> = {
@@ -168,7 +169,7 @@ app.post('/generate', async (c) => {
             id,
             created_at: new Date().toISOString()
           }).catch((err: Error) => console.error('Failed to store vector:', err)),
-          
+
           // Translate to other languages
           db.translateAndStoreMultiLang(c.env, baseSlug, prompt, [
             'zh', 'ja', 'fr'
