@@ -1,5 +1,8 @@
 import { Env } from '../types/env';
-import { ReplicateResponse, RemoveBgResponse } from '../types/emoji';
+import { ReplicateResponse, RemoveBgResponse, Emoji } from '../types/emoji';
+import { ImageAnalysisResult } from '../utils/imageAnalysis';
+import { analyzeImage } from '../utils/imageAnalysis';
+import { saveAnalysisResult } from './database';
 
 export async function generateEmoji(env: Env, prompt: string, image?: string, model?: string): Promise<string> {
   let predictionBody: any;
@@ -155,3 +158,9 @@ export async function pollPrediction(url: string, env: Env, maxAttempts: number 
 
   throw new Error('Timeout waiting for prediction');
 } 
+
+export async function analyzeEmoji(env: Env, emoji: Emoji): Promise<ImageAnalysisResult> {
+  const analysis = await analyzeImage(env, emoji.image_url);
+  await saveAnalysisResult(env, emoji.slug, 'en', analysis);
+  return analysis;
+}

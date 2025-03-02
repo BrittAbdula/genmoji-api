@@ -72,10 +72,23 @@ app.get('/list', async (c) => {
   const locale = c.req.query('locale') || 'en';
   const limit = Math.min(parseInt(c.req.query('limit') || '8'), 50);
   const offset = parseInt(c.req.query('offset') || '0');
-  const sort = (c.req.query('sort') || 'latest') as 'latest' | 'popular';
-  // console.log('---> get /emoji/list:', locale, limit, offset, sort);
+  const sort = (c.req.query('sort') || 'latest') as 'latest' | 'popular' | 'quality';
+  
+  // 新增查询参数
+  const model = c.req.query('model');
+  const category = c.req.query('category');
+  const color = c.req.query('color');
 
-  const emojis = await db.listEmojis(c.env, limit, offset, sort, locale);
+  const emojis = await db.listEmojis(c.env, {
+    limit,
+    offset,
+    sort,
+    locale,
+    model,
+    category,
+    color
+  });
+  
   return c.json({ success: true, emojis });
 });
 
@@ -173,7 +186,14 @@ app.post('/generate', async (c) => {
           // Translate to other languages
           db.translateAndStoreMultiLang(c.env, baseSlug, prompt, [
             'zh', 'ja', 'fr'
-          ]).catch((err: Error) => console.error('Failed to store translations:', err))
+          ]).catch((err: Error) => console.error('Failed to store translations:', err)),
+
+          // analyze emoji
+          ai.analyzeEmoji(c.env, {
+            ...emojiData,
+            id,
+            created_at: new Date().toISOString()
+          }).catch((err: Error) => console.error('Failed to analyze emoji:', err))
         ])
       );
     }
@@ -195,6 +215,26 @@ app.post('/generate', async (c) => {
     return c.json({
       success: false,
       error: error instanceof Error ? error.message : 'An unexpected error occurred'
+    }, 500);
+  }
+});
+
+// 新增路由：获取分组数据
+app.get('/groups', async (c) => {
+  const locale = c.req.query('locale') || 'en';
+  
+  try {
+    // 获取分组数据
+    const groups = await db.getEmojiGroups(c.env, locale);
+    return c.json({ 
+      success: true, 
+      data: groups 
+    });
+  } catch (error) {
+    console.error('Error fetching emoji groups:', error);
+    return c.json({ 
+      success: false, 
+      error: 'Failed to fetch emoji groups' 
     }, 500);
   }
 });

@@ -5,7 +5,8 @@ import {
   getUnanalyzedEmojis, 
   saveAnalysisResult, 
   getAnalysisProgress,
-  EmojiRecord 
+  EmojiRecord,
+  updateAllEmojiStats
 } from '../services/database';
 
 // Constants for batch processing
@@ -236,6 +237,25 @@ app.get('/progress', async (c) => {
     return c.json({
       status: 'error',
       message: error instanceof Error ? error.message : 'Unknown error occurred'
+    }, 500);
+  }
+});
+
+// 路由：更新所有统计数据
+app.post('/update-stats', async (c) => {
+  try {
+    // 更新所有统计数据，不再区分 locale
+    await updateAllEmojiStats(c.env);
+    
+    return c.json({
+      success: true,
+      message: "Successfully updated statistics globally"
+    });
+  } catch (error) {
+    console.error('Error updating statistics:', error);
+    return c.json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error'
     }, 500);
   }
 });

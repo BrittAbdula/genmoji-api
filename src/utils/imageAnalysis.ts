@@ -17,13 +17,25 @@ const EmojiCategoryEnum = z.enum([
   'other'
 ]).describe('Category of the emoji');
 
+const EmojiColorEnum = z.enum([
+  'red',
+  'orange',
+  'yellow',
+  'green',
+  'blue',
+  'purple',
+  'black',
+  'gray',
+  'pink',
+  'brown',
+  'cyan',
+  'metallic'
+]).describe('Color of the emoji');
+
 // Schema for image analysis result
 const ImageAnalysisSchema = z.object({
   category: EmojiCategoryEnum.describe('Category of the emoji'),
-  primaryColor: z.string()
-    .min(3)
-    .max(30)
-    .describe('Basic color term (e.g., sky blue, grass green)'),
+  primaryColor: EmojiColorEnum.describe('Color of the emoji'),
   qualityScore: z.number()
     .int()
     .min(0)
@@ -42,6 +54,7 @@ const ImageAnalysisSchema = z.object({
 
 // Export types based on the schema
 export type EmojiCategory = z.infer<typeof EmojiCategoryEnum>;
+export type EmojiColor = z.infer<typeof EmojiColorEnum>;
 export type ImageAnalysisResult = z.infer<typeof ImageAnalysisSchema>;
 
 /**

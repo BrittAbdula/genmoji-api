@@ -95,13 +95,27 @@ export async function getEmojisByBaseSlug(
   return result.results;
 }
 
-export async function listEmojis(
-  env: Env,
-  limit: number,
-  offset: number,
-  sort: 'latest' | 'popular',
-  locale: string
-): Promise<Emoji[]> {
+interface ListEmojisParams {
+  limit: number;
+  offset: number;
+  sort: 'latest' | 'popular' | 'quality';
+  locale: string;
+  model?: string;
+  category?: string;
+  color?: string;
+}
+
+export async function listEmojis(env: Env, params: ListEmojisParams) {
+  const {
+    limit,
+    offset,
+    sort,
+    locale,
+    model,
+    category,
+    color
+  } = params;
+
   let query = `
     SELECT 
       e.id, 
@@ -112,29 +126,54 @@ export async function listEmojis(
       e.ip, 
       e.has_reference_image,
       COALESCE(et.translated_prompt, e.original_prompt) as prompt,
-      e.model
-    FROM emojis e 
-    LEFT JOIN emoji_translations et 
-      ON e.base_slug = et.base_slug 
-      AND et.locale = ?
+      e.model,
+      ed.category,
+      ed.primary_color,
+      ed.keywords
+    FROM emojis e
+    LEFT JOIN emoji_translations et ON e.base_slug = et.base_slug AND et.locale = ?
+    LEFT JOIN emoji_details ed ON e.slug = ed.slug
+    LEFT JOIN emoji_stats es ON e.slug = es.slug
+    WHERE e.is_public = 1 AND e.has_reference_image = 0
   `;
 
-  if (sort === 'popular') {
-    query += ' LEFT JOIN emoji_stats s ON e.slug = s.slug';
-    query += ' WHERE e.is_public = 1 AND e.has_reference_image = 0';
-    query += ' ORDER BY s.average_rating DESC, s.vote_count DESC, e.created_at DESC';
+  const queryParams: any[] = [locale];
+
+  // 添加过滤条件
+  if (model) {
+    query += ' AND e.model = ?';
+    queryParams.push(model);
+  }
+
+  if (category) {
+    query += ' AND ed.category = ?';
+    queryParams.push(category);
+  }
+
+  if (color) {
+    query += ' AND ed.primary_color = ?';
+    queryParams.push(color);
+  }
+
+  // 添加排序
+  if (sort === 'quality') {
+    query += ' ORDER BY ed.quality_score DESC, e.created_at DESC';
+  } else if (sort === 'popular') {
+    query += ' ORDER BY es.downloads_count DESC, es.likes_count DESC, e.created_at DESC';
   } else {
-    query += ' WHERE e.is_public = 1 AND e.has_reference_image = 0';
     query += ' ORDER BY e.created_at DESC';
   }
+
   query += ' LIMIT ? OFFSET ?';
+  queryParams.push(limit, offset);
+  // console.log(query);
+  // console.log(queryParams);
 
-  const results = await env.DB
-    .prepare(query)
-    .bind(locale, limit, offset)
-    .all<Emoji>();
+  const { results } = await env.DB.prepare(query)
+    .bind(...queryParams)
+    .all();
 
-  return results.results;
+  return results;
 }
 
 // Emoji details operations
@@ -860,4 +899,128 @@ export async function getAnalysisProgress(env: Env): Promise<{
     analyzed,
     remaining: total - analyzed
   };
+}
+
+// 获取emoji分组数据的接口
+interface EmojiGroups {
+  models: {name: string, count: number}[];
+  categories: {name: string, count: number}[];
+  colors: {name: string, count: number}[];
+}
+
+/**
+ * 获取emoji的分组数据（model、category、color）
+ */
+export async function getEmojiGroups(env: Env, locale: string): Promise<EmojiGroups> {
+  // 从统计表中获取模型分组数据
+  const { results: modelsResults } = await env.DB.prepare(`
+    SELECT name, COALESCE(b.translated_name, a.name) as translated_name, count 
+    FROM emoji_model_stats a
+    LEFT JOIN name_translations b ON a.name = b.original_name AND b.type = 'model' AND b.locale = ?
+    ORDER BY count DESC
+  `)
+    .bind(locale)
+    .all();
+  
+  // 从统计表中获取类别分组数据
+  const { results: categoriesResults } = await env.DB.prepare(`
+    SELECT name, COALESCE(b.translated_name, a.name) as translated_name, count 
+    FROM emoji_category_stats a
+    LEFT JOIN name_translations b ON a.name = b.original_name AND b.type = 'category' AND b.locale = ?
+    ORDER BY count DESC
+  `)
+    .bind(locale)
+    .all();
+  
+  // 从统计表中获取颜色分组数据
+  const { results: colorsResults } = await env.DB.prepare(`
+    SELECT name,COALESCE(b.translated_name, a.name) as translated_name, count 
+    FROM emoji_color_stats a
+    LEFT JOIN name_translations b ON a.name = b.original_name AND b.type = 'color' AND b.locale = ?
+    ORDER BY count DESC
+  `)
+    .bind(locale)
+    .all();
+  
+  return {
+    models: (modelsResults || []).map(item => ({
+      name: String(item.name),
+      translated_name: String(item.translated_name),
+      count: Number(item.count)
+    })),
+    categories: (categoriesResults || []).map(item => ({
+      name: String(item.name),
+      translated_name: String(item.translated_name),
+      count: Number(item.count)
+    })),
+    colors: (colorsResults || []).map(item => ({
+      name: String(item.name),
+      translated_name: String(item.translated_name),
+      count: Number(item.count)
+    }))
+  };
+}
+
+/**
+ * 更新emoji模型统计表
+ */
+export async function updateEmojiModelStats(env: Env): Promise<void> {
+  // 清空当前统计
+  await env.DB.prepare(`DELETE FROM emoji_model_stats`).run();
+  
+  // 重新统计并插入
+  await env.DB.prepare(`
+    INSERT INTO emoji_model_stats (name, count)
+    SELECT model as name, COUNT(*) as count
+    FROM emojis
+    WHERE model IS NOT NULL
+    GROUP BY model
+  `)
+    .run();
+}
+
+/**
+ * 更新emoji类别统计表
+ */
+export async function updateEmojiCategoryStats(env: Env): Promise<void> {
+  // 清空当前统计
+  await env.DB.prepare(`DELETE FROM emoji_category_stats`).run();
+  
+  // 重新统计并插入
+  await env.DB.prepare(`
+    INSERT INTO emoji_category_stats (name, count)
+    SELECT category as name, COUNT(*) as count
+    FROM emoji_details ed
+    WHERE ed.category IS NOT NULL
+    GROUP BY category
+  `)
+    .run();
+}
+
+/**
+ * 更新emoji颜色统计表
+ */
+export async function updateEmojiColorStats(env: Env): Promise<void> {
+
+  // 清空当前统计
+  await env.DB.prepare(`DELETE FROM emoji_color_stats`).run();
+  // 重新统计并插入
+  await env.DB.prepare(`
+    INSERT INTO emoji_color_stats (name, count)
+    SELECT primary_color as name, COUNT(*) as count
+    FROM emoji_details where primary_color is not null
+    GROUP BY primary_color
+  `)
+    .run();
+}
+
+/**
+ * 更新所有emoji统计数据
+ */
+export async function updateAllEmojiStats(env: Env): Promise<void> {
+  await Promise.all([
+    updateEmojiModelStats(env),
+    updateEmojiCategoryStats(env),
+    updateEmojiColorStats(env)
+  ]);
 }
